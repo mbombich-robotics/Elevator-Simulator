@@ -102,9 +102,21 @@ body{background:var(--bg);color:var(--text);font-family:Arial,sans-serif;padding
 
 <a class="reset-btn" href="/cmd?reset=1">&#x21BA; &nbsp; Force Reset to Idle</a>
 
+<div class="section"><div class="section-title">Software Update</div>
+<div class="section-body" style="font-size:.85em">
+<p style="color:var(--dim);font-size:.85em;margin-bottom:10px">Connect to building WiFi to check for updates. The device will reconnect to FF_Trainer automatically.</p>
+<div style="display:flex;flex-direction:column;gap:8px">
+<input id="wifiSsid" type="text" placeholder="Network Name (SSID)"
+  style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:10px;border-radius:3px;font-size:.9em;font-family:Arial,sans-serif">
+<input id="wifiPass" type="password" placeholder="Password"
+  style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:10px;border-radius:3px;font-size:.9em;font-family:Arial,sans-serif">
+<button id="updateBtn" class="btn x" onclick="checkUpdates()" style="padding:12px">&#x1F4F6; &nbsp; Connect &amp; Check for Updates</button>
+</div>
+<div id="updateStatus" style="margin-top:10px;font-family:monospace;font-size:.75em;color:var(--amber);min-height:16px"></div>
+</div></div>
+
 <div style="text-align:center;padding:18px 20px 8px;font-family:monospace;font-size:.6em;color:var(--dim);letter-spacing:.12em">
-<a href="https://github.com/mbombich-robotics/Elevator-Simulator/blob/main/design-brief.md"
-   target="_blank"
+<a href="/docs"
    style="color:var(--dim);text-decoration:none;border-bottom:1px solid var(--border);padding-bottom:1px">
 &#x1F4CB; &nbsp; DESIGN BRIEF &amp; WIRING REFERENCE
 </a><br><br>
@@ -124,7 +136,7 @@ function ensureAudioCtx(){
   return audioCtx;
 }
 
-const ARRIVAL_VOL={1:1.0, 2:0.45, 3:0.15};
+const ARRIVAL_VOL={1:1.0, 2:0.225, 3:0.15};
 
 function playArrivalTone(floor){
   if(!audioArmed) return;
@@ -198,8 +210,32 @@ function refresh(){
     prevPollState=st;
     const aseq=parseInt(d.audSeq||0);
     if(aseq!==lastAudSeq&&d.aud){lastAudSeq=aseq; speak(d.aud);}
+    const ssidFld=document.getElementById('wifiSsid');
+    if(d.ssid&&ssidFld&&ssidFld.value==='')ssidFld.value=d.ssid;
   }).catch(()=>{});
 }
 setInterval(refresh,1000); refresh();
+
+function checkUpdates(){
+  const ssid=document.getElementById('wifiSsid').value.trim();
+  const pass=document.getElementById('wifiPass').value;
+  if(!ssid){document.getElementById('updateStatus').textContent='Enter network name.';return;}
+  document.getElementById('updateBtn').disabled=true;
+  document.getElementById('updateStatus').innerHTML='Connecting to <b>'+ssid+'</b>... Device will reconnect to FF_Trainer in ~30 seconds.';
+  const body='ssid='+encodeURIComponent(ssid)+'&pass='+encodeURIComponent(pass);
+  fetch('/update-check',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body})
+    .then(r=>r.text()).then(t=>{document.getElementById('updateStatus').textContent=t;})
+    .catch(()=>{});
+  setTimeout(pollUpdate,32000);
+}
+function pollUpdate(){
+  fetch('/update-status').then(r=>r.text()).then(t=>{
+    document.getElementById('updateStatus').textContent=t;
+    document.getElementById('updateBtn').disabled=false;
+  }).catch(()=>{
+    document.getElementById('updateStatus').textContent='Still reconnecting — please wait...';
+    setTimeout(pollUpdate,6000);
+  });
+}
 </script></body></html>
 )HTML";

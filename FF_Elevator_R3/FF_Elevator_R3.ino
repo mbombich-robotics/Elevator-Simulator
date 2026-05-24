@@ -356,9 +356,11 @@ void runStateMachine() {
       }
       // Set destination — the actual floor change is delayed by TRAVEL_MS per
       // floor, mirroring how Phase 1 / Hall Call travel downward.
-      if (btnFloor1.pressed && currentFloor != 1) { phase2Destination = 1; stateTimer = now; }
-      if (btnFloor2.pressed && currentFloor != 2) { phase2Destination = 2; stateTimer = now; }
-      if (btnFloor3.pressed && currentFloor != 3) { phase2Destination = 3; stateTimer = now; }
+      // Break after setting destination so the travel check below doesn't fire
+      // in the same loop iteration using the stale pre-button-press elapsed value.
+      if (btnFloor1.pressed && currentFloor != 1) { phase2Destination = 1; stateTimer = now; break; }
+      if (btnFloor2.pressed && currentFloor != 2) { phase2Destination = 2; stateTimer = now; break; }
+      if (btnFloor3.pressed && currentFloor != 3) { phase2Destination = 3; stateTimer = now; break; }
       // Step toward destination one floor per TRAVEL_MS
       if (phase2Destination != 0 && phase2Destination != currentFloor && elapsed >= TRAVEL_MS) {
         if (currentFloor < phase2Destination) currentFloor++;

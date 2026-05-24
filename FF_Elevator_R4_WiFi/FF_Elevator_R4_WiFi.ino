@@ -19,6 +19,7 @@
 
 #include "WiFiS3.h"
 #include "Arduino_LED_Matrix.h"
+#include <EEPROM.h>
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // LED MATRIX FRAMES  (8 rows Ã— 12 cols)
@@ -132,6 +133,88 @@ unsigned long lastR3Rx = 0;
 String pendingAudio = "";
 int    audioSeq     = 0;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// WIFI + WEB SERVER GLOBALS  (declared here so doUpdateCheck can reference them)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const char AP_SSID[] = "FF_Trainer";
+const char AP_PASS[] = "ladder12";
+WiFiServer server(80);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WIFI CREDENTIALS (EEPROM) + OTA UPDATE STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+#define CRED_MAGIC 0xA5
+#define CRED_ADDR  0          // layout: [magic][ssid 33B][pass 64B]
+struct WiFiCreds { uint8_t magic; char ssid[33]; char pass[64]; };
+
+String storedSsid = "";
+String pendingUpdateResult = "";
+
+void loadCredentials() {
+  WiFiCreds c;
+  EEPROM.get(CRED_ADDR, c);
+  if (c.magic == CRED_MAGIC) { storedSsid = String(c.ssid); }
+}
+
+void saveCredentials(const String& ssid, const String& pass) {
+  WiFiCreds c;
+  c.magic = CRED_MAGIC;
+  ssid.toCharArray(c.ssid, sizeof(c.ssid));
+  pass.toCharArray(c.pass, sizeof(c.pass));
+  EEPROM.put(CRED_ADDR, c);
+  EEPROM.commit();
+  storedSsid = ssid;
+}
+
+String checkRemoteVersion() {
+  WiFiSSLClient client;
+  if (!client.connect("raw.githubusercontent.com", 443)) return "Could not reach update server.";
+  client.println("GET /mbombich-robotics/Elevator-Simulator/main/version.txt HTTP/1.0");
+  client.println("Host: raw.githubusercontent.com");
+  client.println("Connection: close");
+  client.println();
+  unsigned long t = millis();
+  while (!client.available() && millis() - t < 8000) {}
+  String resp = "";
+  while (client.connected() || client.available()) {
+    if (client.available()) resp += (char)client.read();
+    if (resp.length() > 400) break;
+  }
+  client.stop();
+  int bodyIdx = resp.indexOf("\r\n\r\n");
+  if (bodyIdx < 0) return "Bad response from server.";
+  String ver = resp.substring(bodyIdx + 4);
+  ver.trim();
+  return ver;
+}
+
+void doUpdateCheck(const String& ssid, const String& pass) {
+  saveCredentials(ssid, pass);
+  pendingUpdateResult = "Connecting to " + ssid + "...";
+
+  WiFi.end(); delay(1000);
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  unsigned long t = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) delay(200);
+
+  if (WiFi.status() != WL_CONNECTED) {
+    pendingUpdateResult = "Could not connect to " + ssid + ". Check SSID and password.";
+  } else {
+    String remoteVer = checkRemoteVersion();
+    pendingUpdateResult = remoteVer.length() > 0
+      ? "Remote version: " + remoteVer + " — flash via Arduino IDE if newer than installed sketch."
+      : "Connected but could not read version file.";
+  }
+
+  // Restart as AP
+  WiFi.end(); delay(500);
+  WiFi.beginAP(AP_SSID, AP_PASS);
+  delay(3000);
+  server.begin();
+}
+
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SERIAL LINK FROM R3
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -149,13 +232,19 @@ void computeAudioCue(int newState, int newFloor, int oldState, int oldFloor) {
   if (newState != oldState) {
     switch (newState) {
       case 0:  /* IDLE â€” silent on reset */ break;
-      case 1:  pendingAudio = "Hall call. Elevator traveling."; audioSeq++; break;
-      case 2:  pendingAudio = "Phase one. Firefighter service."; audioSeq++; break;
+      case 1:  // don't re-announce when returning from ARRIVING (state 3)
+        if (oldState != 3) { pendingAudio = "Hall call. Elevator traveling."; audioSeq++; }
+        break;
+      case 2:  // don't re-announce when returning from ARRIVING (state 3)
+        if (oldState != 3) { pendingAudio = "Phase one. Firefighter service."; audioSeq++; }
+        break;
       case 3:
         if (newFloor > 1) { pendingAudio = "Floor " + String(newFloor) + "."; audioSeq++; }
         break;
       case 4:  pendingAudio = "Lobby. Doors opening."; audioSeq++; break;
-      case 5:  pendingAudio = "Firefighter operation. Select destination floor."; audioSeq++; break;
+      case 5:  // don't re-announce when resuming from HOLD (state 6)
+        if (oldState != 6) { pendingAudio = "Firefighter operation. Select destination floor."; audioSeq++; }
+        break;
       case 6:  pendingAudio = "Hold."; audioSeq++; break;
       default: break;
     }
@@ -235,9 +324,24 @@ void updateMatrix() {
 // WIFI + WEB SERVER
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-const char AP_SSID[] = "FF_Trainer";
-const char AP_PASS[] = "ladder12";
-WiFiServer server(80);
+String urlDecode(const String& s) {
+  String result = "";
+  for (int i = 0; i < (int)s.length(); i++) {
+    if (s[i] == '+') { result += ' '; }
+    else if (s[i] == '%' && i + 2 < (int)s.length()) {
+      char h1 = s[i+1], h2 = s[i+2];
+      int val = 0;
+      if      (h1 >= '0' && h1 <= '9') val = (h1-'0')    << 4;
+      else if (h1 >= 'A' && h1 <= 'F') val = (h1-'A'+10) << 4;
+      else if (h1 >= 'a' && h1 <= 'f') val = (h1-'a'+10) << 4;
+      if      (h2 >= '0' && h2 <= '9') val |= (h2-'0');
+      else if (h2 >= 'A' && h2 <= 'F') val |= (h2-'A'+10);
+      else if (h2 >= 'a' && h2 <= 'f') val |= (h2-'a'+10);
+      result += (char)val; i += 2;
+    } else { result += s[i]; }
+  }
+  return result;
+}
 
 String getParam(const String& line, const char* key) {
   String search = String(key) + "=";
@@ -251,6 +355,7 @@ String getParam(const String& line, const char* key) {
 }
 
 #include "html.h"
+#include "docs.h"
 
 void handleWebServer() {
   WiFiClient wClient = server.available();
@@ -302,12 +407,44 @@ void handleWebServer() {
                "\",\"ph2\":\""   + (r3Ph2 ? "ON" : "OFF") +
                "\",\"r3age\":\""  + String(age) +
                "\",\"aud\":\""   + pendingAudio +
-               "\",\"audSeq\":\"" + String(audioSeq) + "\"}";
+               "\",\"audSeq\":\"" + String(audioSeq) +
+               "\",\"ssid\":\""   + storedSsid + "\"}";
     pendingAudio = "";  // clear after serving
     wClient.print("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n");
     wClient.print(j);
     wClient.stop();
     return;
+  }
+
+  if (getLine.indexOf("/docs") >= 0) {
+    wClient.print("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n");
+    wClient.print(DOCS_HTML);
+    wClient.stop(); return;
+  }
+
+  if (getLine.indexOf("/update-check") >= 0) {
+    // Read POST body (body arrives after headers)
+    unsigned long bt = millis();
+    while (wClient.connected() && millis() - bt < 200) {
+      if (wClient.available()) req += (char)wClient.read();
+    }
+    int bodyStart = req.indexOf("\r\n\r\n");
+    String body = (bodyStart >= 0) ? req.substring(bodyStart + 4) : "";
+    String ssid = urlDecode(getParam(body, "ssid"));
+    String pass = urlDecode(getParam(body, "pass"));
+    wClient.print("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n");
+    wClient.print("ok");
+    wClient.stop();
+    if (ssid.length() > 0) doUpdateCheck(ssid, pass);
+    return;
+  }
+
+  if (getLine.indexOf("/update-status") >= 0) {
+    String result = pendingUpdateResult.length() > 0
+      ? pendingUpdateResult : "No update check performed yet.";
+    wClient.print("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n");
+    wClient.print(result);
+    wClient.stop(); return;
   }
 
   wClient.print("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n");
@@ -330,6 +467,7 @@ void setup() {
   showMatrix(MTX_BLANK);
 
   Serial1.begin(9600);  // R3 link â€” disconnect before programming
+  loadCredentials();
 
   if (WiFi.status() == WL_NO_MODULE) {
     Serial.println("WiFi module missing!");
