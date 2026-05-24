@@ -190,6 +190,7 @@ void saveCredentials(const String& ssid, const String& pass) {
 
 String checkRemoteVersion() {
   WiFiSSLClient client;
+  client.setInsecure();
   if (!client.connect("raw.githubusercontent.com", 443)) return "Could not reach update server.";
   client.println("GET /mbombich-robotics/Elevator-Simulator/main/version.txt HTTP/1.0");
   client.println("Host: raw.githubusercontent.com");
@@ -236,6 +237,7 @@ void doUpdateCheck(const String& ssid, const String& pass) {
     showMatrix(MTX_WARN);  // reuse warning triangle = connection failed
     pendingUpdateResult = "Could not connect to " + ssid + ". Check SSID and password.";
   } else {
+    delay(2000);  // let DHCP/DNS settle before opening SSL connection
     showMatrix(MTX_WIFI);  // solid = connected, checking version
     String remoteVer = checkRemoteVersion();
     pendingUpdateResult = remoteVer.length() > 0
