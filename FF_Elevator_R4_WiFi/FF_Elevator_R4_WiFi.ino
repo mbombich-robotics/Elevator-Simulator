@@ -1,7 +1,7 @@
 ﻿/*
  â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
  â•‘   FF ELEVATOR TRAINER â€” Arduino Uno R4 WiFi                            â•‘
- â•‘   WiFi AP + Instructor Web Interface  â€”  v4.0  |  May 2026            â•‘
+ â•‘   WiFi AP + Instructor Web Interface  â€”  v4.01  |  May 2026            â•‘
  â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
  â•‘   ROLE: WiFi access point and web server only.                         â•‘
  â•‘   All I/O and the state machine run on the R3.                         â•‘
@@ -297,8 +297,7 @@ void parseSerialFromR3() {
 
   while (Serial1.available()) {
     char c = (char)Serial1.read();
-    if (c == '
-') {
+    if (c == '\n') {
       buf.trim();
       if (buf.length() > 0 && buf.startsWith("S:")) {
         int s  = extractField(buf, "S");
@@ -322,7 +321,7 @@ void parseSerialFromR3() {
         }
       }
       buf = "";
-    } else if (c != '') {
+    } else if (c != '\r') {
       if (buf.length() < 64) buf += c;
     }
   }

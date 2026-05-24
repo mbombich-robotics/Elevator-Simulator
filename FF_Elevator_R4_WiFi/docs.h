@@ -29,7 +29,7 @@ code{font-family:monospace;background:#1a1a1a;padding:1px 4px;border-radius:2px;
 </style></head><body>
 <div class="hdr">
   <div class="hdr-title">&#x1F692; FF Elevator Trainer — Reference</div>
-  <div class="hdr-sub">DESIGN BRIEF &amp; WIRING QUICK-REFERENCE &nbsp;&middot;&nbsp; v4.0</div>
+  <div class="hdr-sub">DESIGN BRIEF &amp; WIRING QUICK-REFERENCE &nbsp;&middot;&nbsp; v4.01</div>
 </div>
 <a class="back" href="/">&#x2190; Back to Instructor Interface</a>
 
@@ -119,7 +119,7 @@ Disconnect the link before uploading to either board.</p>
 <li>Use the <strong>Software Update</strong> section on the instructor interface main page</li>
 <li>Enter the building WiFi credentials — the device will temporarily connect, check the version on GitHub, then return to AP mode</li>
 <li>If a newer version is available, download the updated sketch and flash via Arduino IDE (USB connection required)</li>
-<li>Current sketch version: <strong>v4.0</strong></li>
+<li>Current sketch version: <strong>v4.01</strong></li>
 </ul>
 
 <div style="text-align:center;padding:24px 20px 8px;font-family:monospace;font-size:.6em;color:var(--dim);letter-spacing:.12em">
