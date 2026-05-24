@@ -210,21 +210,23 @@ void updateFFLED(bool ffActive) {
 static int  lastSentState = -1;
 static int  lastSentFloor = -1;
 static int  lastSentFault = -1;
+static int  lastSentDest  = 0;
 static bool lastSentPh1   = false;
 static bool lastSentPh2   = false;
 static unsigned long lastHeartbeat = 0;
 
 void sendState() {
-  // Guard: don't block if TX buffer can't fit the full line (~26 bytes)
-  if (Serial.availableForWrite() < 30) return;
-  Serial.print("S:");  Serial.print((int)simState);
-  Serial.print(",F:"); Serial.print(currentFloor);
+  if (Serial.availableForWrite() < 35) return;
+  Serial.print("S:");   Serial.print((int)simState);
+  Serial.print(",F:");  Serial.print(currentFloor);
   Serial.print(",P1:"); Serial.print(keyPh1On.state ? 1 : 0);
   Serial.print(",P2:"); Serial.print(keyPh2On.state ? 1 : 0);
-  Serial.print(",FA:"); Serial.println((int)faultMode);
+  Serial.print(",FA:"); Serial.print((int)faultMode);
+  Serial.print(",D:");  Serial.println(phase2Destination);
   lastSentState = (int)simState;
   lastSentFloor = currentFloor;
   lastSentFault = (int)faultMode;
+  lastSentDest  = phase2Destination;
   lastSentPh1   = keyPh1On.state;
   lastSentPh2   = keyPh2On.state;
   lastHeartbeat = millis();
@@ -257,11 +259,12 @@ void checkSerial() {
 
 void updateSerialLink() {
   checkSerial();
-  bool changed = ((int)simState  != lastSentState ||
-                  currentFloor   != lastSentFloor  ||
-                  keyPh1On.state != lastSentPh1    ||
-                  keyPh2On.state != lastSentPh2    ||
-                  (int)faultMode != lastSentFault);
+  bool changed = ((int)simState    != lastSentState ||
+                  currentFloor     != lastSentFloor  ||
+                  phase2Destination != lastSentDest  ||
+                  keyPh1On.state   != lastSentPh1    ||
+                  keyPh2On.state   != lastSentPh2    ||
+                  (int)faultMode   != lastSentFault);
   if (changed || millis() - lastHeartbeat >= 1000UL) sendState();
 }
 

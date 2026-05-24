@@ -103,6 +103,26 @@ uint8_t MTX_BLANK[8][12] = {
   {0,0,0,0,0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0,0,0,0,0},
   {0,0,0,0,0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0,0,0,0,0},
 };
+uint8_t MTX_WIFI[8][12] = {
+  { 0,0,0,0,0,0,0,0,0,0,0,0 },
+  { 0,1,1,1,1,1,1,0,0,0,0,0 },  // outer arc
+  { 1,1,0,0,0,0,1,1,0,0,0,0 },  // outer sides
+  { 0,0,1,1,1,1,0,0,0,0,0,0 },  // inner arc
+  { 0,0,0,0,0,0,0,0,0,0,0,0 },
+  { 0,0,0,1,1,0,0,0,0,0,0,0 },  // dot
+  { 0,0,0,1,1,0,0,0,0,0,0,0 },
+  { 0,0,0,0,0,0,0,0,0,0,0,0 },
+};
+uint8_t MTX_CHECK[8][12] = {
+  { 0,0,0,0,0,0,0,0,0,0,0,0 },
+  { 0,0,0,0,0,0,0,1,0,0,0,0 },
+  { 0,0,0,0,0,0,1,1,0,0,0,0 },
+  { 0,1,0,0,0,1,1,0,0,0,0,0 },
+  { 0,1,1,0,1,1,0,0,0,0,0,0 },
+  { 0,0,1,1,1,0,0,0,0,0,0,0 },
+  { 0,0,0,1,0,0,0,0,0,0,0,0 },
+  { 0,0,0,0,0,0,0,0,0,0,0,0 },
+};
 
 void showMatrix(uint8_t frame[8][12]) { matrix.loadPixels(&frame[0][0], 96); }
 void showFloorMatrix(int f) {
@@ -124,6 +144,7 @@ unsigned long lastMatrixFlash = 0;
 
 int  r3State    = 0;
 int  r3Floor    = 3;
+int  r3Dest     = 0;   // phase2Destination broadcast from R3
 bool r3Ph1      = false;
 bool r3Ph2      = false;
 int  r3Fault    = 0;
@@ -193,26 +214,43 @@ void doUpdateCheck(const String& ssid, const String& pass) {
   saveCredentials(ssid, pass);
   pendingUpdateResult = "Connecting to " + ssid + "...";
 
-  server.end();              // cleanly stop server before dropping the AP
-  WiFi.end(); delay(2000);
+  server.end();
+  WiFi.end();
+  showMatrix(MTX_WIFI);  // solid WiFi = connecting
+  delay(2000);
+
   WiFi.begin(ssid.c_str(), pass.c_str());
   unsigned long t = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) delay(200);
-
-  if (WiFi.status() != WL_CONNECTED) {
-    pendingUpdateResult = "Could not connect to " + ssid + ". Check SSID and password.";
-  } else {
-    String remoteVer = checkRemoteVersion();
-    pendingUpdateResult = remoteVer.length() > 0
-      ? "Remote version: " + remoteVer + " — flash via Arduino IDE if newer than installed sketch."
-      : "Connected but could not read version file.";
+  bool wifiFlash = false;
+  unsigned long lastFlash = 0;
+  while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
+    if (millis() - lastFlash >= 400) {
+      lastFlash = millis();
+      wifiFlash = !wifiFlash;
+      showMatrix(wifiFlash ? MTX_WIFI : MTX_BLANK);
+    }
+    delay(50);
   }
 
-  // Restart as AP — longer delays to let the ESP32 co-processor reinitialize
+  if (WiFi.status() != WL_CONNECTED) {
+    showMatrix(MTX_WARN);  // reuse warning triangle = connection failed
+    pendingUpdateResult = "Could not connect to " + ssid + ". Check SSID and password.";
+  } else {
+    showMatrix(MTX_WIFI);  // solid = connected, checking version
+    String remoteVer = checkRemoteVersion();
+    pendingUpdateResult = remoteVer.length() > 0
+      ? "Remote version: " + remoteVer
+      : "Connected but could not read version file.";
+    showMatrix(MTX_CHECK);  // checkmark = version result ready
+  }
+
+  // Restart as AP
   WiFi.end(); delay(2000);
   WiFi.beginAP(AP_SSID, AP_PASS);
   delay(6000);
   server.begin();
+  // Hold result symbol 3 more seconds so user sees it before reconnecting
+  delay(3000);
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -226,44 +264,41 @@ int extractField(const String& s, const char* key) {
   return s.substring(idx + k.length()).toInt();
 }
 
-void computeAudioCue(int newState, int newFloor, int oldState, int oldFloor) {
-  if (newState == oldState && newFloor == oldFloor) return;
+void computeAudioCue(int newState, int newFloor, int oldState, int oldFloor,
+                     int oldDest, int newDest) {
+  if (newState == oldState && newFloor == oldFloor && newDest == oldDest) return;
+
+  // Announce direction immediately when Phase 2 destination is first set
+  if (newState == 5 && oldDest == 0 && newDest > 0) {
+    if      (newDest > newFloor) { pendingAudio = "Going up.";   audioSeq++; }
+    else if (newDest < newFloor) { pendingAudio = "Going down."; audioSeq++; }
+    return;
+  }
 
   if (newState != oldState) {
     switch (newState) {
-      case 0:  /* IDLE â€” silent on reset */ break;
-      case 1:  // don't re-announce when returning from ARRIVING (state 3)
-        if (oldState != 3) { pendingAudio = "Hall call. Elevator traveling."; audioSeq++; }
-        break;
-      case 2:  // don't re-announce when returning from ARRIVING (state 3)
-        if (oldState != 3) { pendingAudio = "Phase one. Firefighter service."; audioSeq++; }
-        break;
+      case 0:  break;
+      case 1:  if (oldState != 3) { pendingAudio = "Hall call. Elevator traveling."; audioSeq++; } break;
+      case 2:  if (oldState != 3) { pendingAudio = "Phase one. Firefighter service."; audioSeq++; } break;
       case 3:
         if (newFloor > 1) { pendingAudio = "Floor " + String(newFloor) + "."; audioSeq++; }
         break;
       case 4:  pendingAudio = "Lobby. Doors opening."; audioSeq++; break;
-      case 5:  // don't re-announce when resuming from HOLD (6) or returning from ARRIVING (3)
-        if (oldState != 6 && oldState != 3) { pendingAudio = "Firefighter operation. Select destination floor."; audioSeq++; }
-        break;
+      case 5:  if (oldState != 6 && oldState != 3) { pendingAudio = "Firefighter operation. Select destination floor."; audioSeq++; } break;
       case 6:  pendingAudio = "Hold."; audioSeq++; break;
       default: break;
     }
-  } else if (newState == 5 && newFloor != oldFloor) {
-    // Floor change in Phase 2
-    String dir = (newFloor < oldFloor) ? "down" : "up";
-    pendingAudio = "Going " + dir + " to floor " + String(newFloor) + ".";
-    audioSeq++;
   }
+  // Phase 2 floor changes now go through STATE_ARRIVING (state 3).
 }
 
 void parseSerialFromR3() {
   static String buf = "";
-  static int prevState = -1;
-  static int prevFloor = 3;
 
   while (Serial1.available()) {
     char c = (char)Serial1.read();
-    if (c == '\n') {
+    if (c == '
+') {
       buf.trim();
       if (buf.length() > 0 && buf.startsWith("S:")) {
         int s  = extractField(buf, "S");
@@ -271,21 +306,23 @@ void parseSerialFromR3() {
         int p1 = extractField(buf, "P1");
         int p2 = extractField(buf, "P2");
         int fa = extractField(buf, "FA");
+        int d  = extractField(buf, "D");
         if (s >= 0) {
-          int ps = (prevState < 0) ? s : prevState;
-          computeAudioCue(s, constrain(f,0,3), ps, prevFloor);
-          prevState = r3State;
-          prevFloor = r3Floor;
+          int oldState = r3State;
+          int oldFloor = r3Floor;
+          int oldDest  = r3Dest;
           r3State = s;
           r3Floor = constrain(f, 0, 3);
           r3Ph1   = (p1 == 1);
           r3Ph2   = (p2 == 1);
           r3Fault = constrain(fa, 0, 3);
+          r3Dest  = (d >= 0) ? constrain(d, 0, 3) : 0;
           lastR3Rx = millis();
+          computeAudioCue(r3State, r3Floor, oldState, oldFloor, oldDest, r3Dest);
         }
       }
       buf = "";
-    } else if (c != '\r') {
+    } else if (c != '') {
       if (buf.length() < 64) buf += c;
     }
   }
