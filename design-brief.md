@@ -2,28 +2,28 @@
 ## Design Brief & Bill of Materials
 
 **Based on Salvaged Otis 3-Stop Car Operating Panel**
-Control Platform: Arduino Uno R4 WiFi + DFPlayer Mini
+Control Platform: Arduino Uno R3 (I/O & State Machine) + Arduino Uno R4 WiFi (Instructor Interface)
 Version 2.3 | May 2026
 
 ---
 
 ## Collaboration
 
-This project is a collaboration between the **Gary Sinise Foundation** and the **Vicksburg High School Applied Engineering & Robotics Class**. Students designed and built the simulator as a hands-on engineering capstone, repurposing salvaged elevator hardware to support firefighter training programs served by the Foundation.
+This project is a collaboration between the **Gary Sinise Foundation** and the **Vicksburg High School Applied Engineering & Robotics Class**. Students designed and built the simulator components as a hands-on engineering capstone, repurposing salvaged elevator hardware to support firefighter training programs served by the Foundation.
 
 ---
 
 ## 1. Project Overview
 
-This project converts a decommissioned Otis elevator car operating panel (COP) into a fully functional firefighter training simulator. The unit is a 3-stop panel originally installed in a commercial building. All elevator controller wiring has been severed. The panel is driven by a single Arduino Uno R4 WiFi handling all hardware I/O, WiFi instructor interface, and state machine. A DFPlayer Mini module provides MP3 audio playback, driving the original 4Ω panel speaker directly from its built-in 3W amplifier output. Power is supplied by a single USB-C connection from a battery bank — no mains wiring is required inside the project enclosure.
+This project converts a decommissioned Otis elevator car operating panel (COP) into a fully functional firefighter training simulator. The unit is a 3-stop panel originally installed in a commercial building. All elevator controller wiring has been severed. The panel is driven by two Arduino boards: an Uno R3 handles all hardware I/O and runs the elevator state machine, while an Uno R4 WiFi serves the instructor web interface over a built-in WiFi access point. The two boards communicate via a hardware serial link. Power is supplied by a single USB-C connection from a battery bank — no mains wiring is required inside the project enclosure.
 
-The simulator allows fire service trainees to practice Phase 1 Recall and Phase 2 Firefighter Operation procedures using the original key switches, buttons, and indicator lights from the real elevator panel. An instructor web interface served over WiFi enables scenario injection including fault conditions, all accessible from a phone or tablet.
+The simulator allows fire service trainees to practice Phase 1 Recall and Phase 2 Firefighter Operation procedures using the original key switches, buttons, and indicator lights from the real elevator panel. An instructor web interface served over WiFi enables scenario injection including fault conditions and audio cues, all accessible from a phone or tablet.
 
 ### 1.1 Training Objectives
 
 - Trainee activates Phase 1 Recall using the original fire recall key switch
 - Floor display updates realistically as elevator "travels" from floor 3 to floor 1
-- Audible chime sounds at each floor arrival — more beeps closer to ground floor
+- Arrival audio cues play through the instructor interface as the elevator approaches each floor
 - Firefighter mode indicator lights activate on display board and COP panel
 - Instructor injects fault conditions remotely via WiFi web interface
 - Trainee uses Phase 2 key and floor buttons to operate elevator in FF mode
@@ -32,7 +32,6 @@ The simulator allows fire service trainees to practice Phase 1 Recall and Phase 
 
 - Otis COP panel face with floor buttons (3, 2, ★1), key switches, door controls
 - Display board AAA26800AGP — two A6276ELW 32-channel LED drivers (U3, U4)
-- 4Ω speaker and piezo buzzer
 - Firefighter indicator LED on Phase 1 recall switch trim
 - Phase 1 Recall key switch and Phase 2 Fire Operation key switch
 
@@ -40,26 +39,32 @@ The simulator allows fire service trainees to practice Phase 1 Recall and Phase 
 
 ## 2. System Architecture
 
-The original RSL (Remote Serial Link) communication bus is bypassed entirely. The Arduino Uno R4 WiFi replaces the elevator controller — driving the A6276ELW LED driver chips via hardware SPI, monitoring all physical inputs via GPIO, serving the instructor web interface directly over built-in WiFi, and controlling the DFPlayer Mini for realistic audio announcements through the panel speaker. Power is supplied by a 5V 2A USB wall adapter. The Uno's 5V GPIO outputs drive the A6276ELW well above its VIH minimum of 2.0V — no level shifter required. The Uno 5V pin also supplies the display board VCC rail directly.
+The original RSL (Remote Serial Link) communication bus is bypassed entirely. An Arduino Uno R3 replaces the elevator controller — driving the A6276ELW LED driver chips via SPI, monitoring all physical inputs via GPIO, and running the state machine. An Arduino Uno R4 WiFi runs alongside the R3, serving the instructor web interface over a built-in WiFi access point and receiving state updates from the R3 via Serial1. Audio cues are produced by the instructor interface running on the connected phone or tablet. Power is supplied by a 5V USB-C battery bank. The Uno's 5V GPIO outputs drive the A6276ELW well above its VIH minimum of 2.0V — no level shifter required. The Uno 5V pin also supplies the display board VCC rail directly.
 
 ### 2.1 Block Diagram
 
 ```
-INPUTS                          ARDUINO UNO R4 WIFI              OUTPUTS
-Phase 1 Key                     Renesas RA4M1 48MHz
-Phase 2 Key        ──────►      Built-in ESP32-S3 WiFi   ──────► A6276 Display (SPI0)
-Floor Buttons 1/2/3             State Machine                     FF Indicator LED
-WiFi Web UI                     Display + I/O            ──────► Speaker / Chime
+INPUTS                     ARDUINO UNO R3 (I/O)               OUTPUTS
+Phase 1 Key                ATmega328P
+Phase 2 Key     ──────►    State Machine           ──────►    A6276 Display (SPI)
+Floor Buttons              Hardware I/O                        FF Indicator LED
+                                │ Serial1
+                           ─────┴─────────────────────────────────────────────
+                           ARDUINO UNO R4 WIFI (Instructor Interface)
+WiFi Web UI    ◄──────►    ESP32-S3 WiFi AP
+                           Receives state from R3
 
-                   ◄──────      POWER: 5V 2A USB-C Wall Adapter (no mains wiring)
+                ◄──────    POWER: 5V USB-C Battery Bank (no mains wiring)
 ```
 
 ### 2.2 GPIO Pin Assignment
 
+**Uno R3 (I/O & State Machine)**
+
 | Arduino Pin | Signal | Function | Notes |
 |---|---|---|---|
-| D0 | DFP_RX | DFPlayer TX→Uno | Serial1 RX — no conflicts with upload on R4 |
-| D1 | DFP_TX | DFPlayer RX←Uno | Serial1 TX via 1kΩ resistor |
+| D0 | R4_RX | Serial1 RX ← R4 WiFi TX | Hardware serial link to R4 WiFi |
+| D1 | R4_TX | Serial1 TX → R4 WiFi RX | Hardware serial link to R4 WiFi |
 | D2 | BTN_FLOOR1 | Floor 1 button | INPUT_PULLUP, active LOW |
 | D3 | BTN_FLOOR2 | Floor 2 button | INPUT_PULLUP, active LOW |
 | D4 | BTN_FLOOR3 | Floor 3 button | INPUT_PULLUP, active LOW |
@@ -75,7 +80,13 @@ WiFi Web UI                     Display + I/O            ──────► S
 | A0 | FF_HELMET_LED | FF Helmet indicator | OUTPUT — 2N2222 transistor, 470Ω base, 220Ω anode |
 | A1–A5 | (spare) | Available | Reserved for future expansion |
 
-> **Note:** D0/D1 carry DFPlayer serial (Serial1). The Uno R4 WiFi uploads via a dedicated USB peripheral separate from Serial1, so DFPlayer wiring does not interfere with sketch uploads.
+**Uno R4 WiFi (Instructor Interface)**
+
+| Arduino Pin | Signal | Function | Notes |
+|---|---|---|---|
+| D0 | R3_RX | Serial1 RX ← R3 TX | State updates from R3 |
+| D1 | R3_TX | Serial1 TX → R3 RX | Commands to R3 |
+| D8 | PH1_LED | Phase 1 indicator LED | OUTPUT, HIGH when Phase 1 key ON |
 
 ---
 
@@ -85,7 +96,7 @@ The simulator state machine follows standard ASME A17.1 firefighter operation lo
 
 ```
 POWER ON
-  Startup chime, display shows Floor 3
+  Display shows Floor 3
   ▼
 IDLE
   Display: 3 | FF Light: OFF
@@ -96,12 +107,12 @@ PHASE 1 — RECALL ACTIVE
   FF Light: Steady ON | Display: 3 | Timer: 4 sec/floor
   ▼  4 seconds elapsed
 FLOOR 2 ARRIVAL
-  Chime: 2 beeps (medium volume) | Display: 2
+  Audio cue through instructor interface | Display: 2
   ▼  1.5 sec dwell
 CONTINUING TOWARD LOBBY
   ▼  4 seconds elapsed
 FLOOR 1 — LOBBY ARRIVAL
-  Chime: 3 beeps (loudest) | Display: 1 | Awaiting Phase 2
+  Audio cue through instructor interface | Display: 1 | Awaiting Phase 2
   ▼
 Phase 2 FF Op Key → ON
 PHASE 2 — FF OPERATION
@@ -129,13 +140,11 @@ RESET
 
 | Qty | Component | Digikey / Source | Est. Cost | Notes |
 |---|---|---|---|---|
-| 1 | Arduino Uno R4 WiFi | B0C8V88Z9D (Amazon) | $26.95 | Main controller — 5V logic, SPI, PWM, GPIO, WiFi |
-| 1 | DFPlayer Mini MP3 Module (5-pack) | B0CH2WZT5Q (Amazon) | $9.99 (5-pack) | MP3 playback via serial — drives panel speaker directly |
-| 1 | MicroSD Card 8GB+ | Amazon | ~$5 | FAT32 formatted, stores MP3 files as 0001.mp3 etc. |
+| 1 | Arduino Uno R3 | A000066 (Arduino.cc) | $27.60 | I/O & state machine — ATmega328P, 5V logic, SPI, GPIO |
+| 1 | Arduino Uno R4 WiFi | B0C8V88Z9D (Amazon) | $26.95 | Instructor interface — built-in ESP32-S3 WiFi |
 | 2 | 2N2222A NPN Transistor | 4491-2N2222A-ND | $1 | FF LED transistor switch + 1 spare |
 | 4 | 470Ω Resistor 1/4W | CF14JT470RCT-ND | $0.25 | 2N2222A base resistor |
 | 2 | 220Ω Resistor 1/4W | CF14JT220RCT-ND | $0.10 | FF helmet LED anode current limit |
-| 1 | 1kΩ Resistor 1/4W | CF14JT1K00CT-ND | $0.10 | DFPlayer RX noise suppression |
 | 2 | 100µF 16V Electrolytic Capacitor | UVR1C220MDD1TA | $0.50 | Power supply decoupling |
 | 4 | 0.1µF 50V Ceramic Capacitor | K104K15X7RF5TH5 | $0.25 | IC bypass decoupling |
 | 1 | Small perfboard ~10×7cm | — | $3 | Mounts transistors, passives |
@@ -164,9 +173,8 @@ RESET
 
 | Qty | Item | Source | Est. Cost | Notes |
 |---|---|---|---|---|
-| 1 | Otis COP Panel Assembly | Salvaged | $0 | Buttons, keys, speaker all intact |
+| 1 | Otis COP Panel Assembly | Salvaged | $0 | Buttons, keys, and indicator lights intact |
 | 1 | Display Board AAA26800AGP | Salvaged | $0 | U4 chain entry verified; bridge rectifier intact |
-| 1 | 4Ω Speaker | Salvaged | $0 | Original elevator speaker, driven by DFPlayer SPK_1/SPK_2 |
 | 1 | LB3371-11CNWRN FF Helmet Indicator LED | Salvaged | $0 | Dual red LED; pins 6/8 anodes, 1/3 cathodes |
 | 1 | Plywood mounting board | On hand | $0 | Panel already mounted |
 | 1 | Small project enclosure | Amazon | $8 | Houses proto shield on Uno R4 WiFi |
@@ -178,7 +186,6 @@ RESET
 |---|---|---|
 | Arduino IDE 2.x | Free | Primary development environment |
 | Arduino Uno R4 board package | Free | Via Arduino Board Manager |
-| DFRobotDFPlayerMini library | Free | Via Arduino Library Manager |
 | Multimeter | On hand | Continuity tracing and voltage verification |
 | Logic analyzer (optional) | ~$55 | Useful for verifying A6276 SPI waveforms |
 | Soldering iron | On hand | Perfboard assembly and display board tap points |
@@ -187,12 +194,12 @@ RESET
 
 | Category | Estimated Total |
 |---|---|
-| Electronics components | ~$42 |
+| Electronics components | ~$57 |
 | Power supply | $0–8 |
-| Hardware & enclosure | ~$55 |
+| Hardware & enclosure | ~$45 |
 | Software & tools | ~$10 |
 | Salvaged panel hardware | $0 |
-| **TOTAL PROJECT COST** | **~$109–117** |
+| **TOTAL PROJECT COST** | **~$112–120** |
 
 ---
 
@@ -232,15 +239,13 @@ This project runs entirely on 5V USB power. No mains voltage is present inside t
 | 22 AWG | Black | Button commons | All three button common contacts | GND rail (daisy-chain) |
 | 22 AWG | Yellow | FF LED signal | Perfboard 2N2222 collector | FF indicator LED anode |
 | 22 AWG | Black | FF LED return | FF indicator LED cathode | GND rail |
-| 22 AWG | White | Speaker + | PAM8403 L output | Speaker + terminal |
-| 22 AWG | Black | Speaker − | PAM8403 GND output | Speaker − terminal |
 
 ### 6.2 Schematic — Power Distribution
 
 | Source | Rail | Loads |
 |---|---|---|
 | Anker PowerCore USB-C | 5V → Uno R4 USB-C | Uno R4 WiFi (all logic) |
-| Uno R4 5V pin | 5V rail on proto shield | Display board VCC, DFPlayer VCC, transistor collector supply |
+| Uno R4 5V pin | 5V rail on proto shield | Display board VCC, transistor collector supply |
 | Uno R4 GND pin | GND rail on proto shield | All grounds common |
 
 ### 6.3 Proto Shield Component Connections
@@ -252,16 +257,10 @@ This project runs entirely on 5V USB power. No mains voltage is present inside t
 | Q1 (2N2222A) | Emitter | GND rail | Direct |
 | R1 (470Ω) | A0 → Q1 base | Transistor base current limiting | |
 | R2 (220Ω) | 5V → T1 LED+ | FF Helmet LED anode current limiting | |
-| R3 (1kΩ) | D1 → DFPlayer RX | Noise suppression | |
 | C1, C2 (100µF) | 5V rail to GND | Bulk decoupling | |
 | C3–C6 (0.1µF) | 5V rail to GND | High-frequency bypass | |
-| DFPlayer Mini | VCC | 5V rail | Via female header |
-| DFPlayer Mini | GND | GND rail | Via female header |
-| DFPlayer Mini | RX | D1 via R3 | 1kΩ noise suppression |
-| DFPlayer Mini | TX | D0 | Direct |
-| DFPlayer Mini | SPK_1/SPK_2 | T1 SPK+/SPK− | Via screw terminal → speaker |
 
-### 6.4 Screw Terminal Block T1 (Display, LED, Speaker)
+### 6.4 Screw Terminal Block T1 (Display and LED)
 
 | Pos | Signal | From (shield side) | To (external) |
 |---|---|---|---|
@@ -272,15 +271,15 @@ This project runs entirely on 5V USB power. No mains voltage is present inside t
 | 5 | GND | GND rail | Display board GND rail |
 | 6 | LED+ | 5V via R2 (220Ω) | FF Helmet LED anode |
 | 7 | LED− | Q1 collector | FF Helmet LED cathode |
-| 8 | SPK+ | DFPlayer SPK_1 | Speaker + terminal |
+| 8 | (spare) | — | Available for future expansion |
 
 > U4 pin 21 (/OE) is soldered directly to a GND via on the display board — not routed through the terminal block.
 
-### 6.5 Screw Terminal Block T2 (Inputs and Speaker Return)
+### 6.5 Screw Terminal Block T2 (Inputs)
 
 | Pos | Signal | Uno Pin | External Connection |
 |---|---|---|---|
-| 1 | SPK− | DFPlayer SPK_2 | Speaker − terminal |
+| 1 | (spare) | — | Available for future expansion |
 | 2 | Floor 3 | D4 | Floor 3 button NO contact |
 | 3 | Floor 2 | D3 | Floor 2 button NO contact |
 | 4 | Floor 1 | D2 | Floor 1 button NO contact |
