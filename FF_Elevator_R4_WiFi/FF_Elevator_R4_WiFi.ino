@@ -352,6 +352,15 @@ body{background:var(--bg);color:var(--text);font-family:Arial,sans-serif;padding
 
 <a class="reset-btn" href="/cmd?reset=1">&#x21BA; &nbsp; Force Reset to Idle</a>
 
+<div style="text-align:center;padding:18px 20px 8px;font-family:monospace;font-size:.6em;color:var(--dim);letter-spacing:.12em">
+<a href="https://github.com/mbombich-robotics/Elevator-Simulator/blob/main/design-brief.md"
+   target="_blank"
+   style="color:var(--dim);text-decoration:none;border-bottom:1px solid var(--border);padding-bottom:1px">
+&#x1F4CB; &nbsp; DESIGN BRIEF &amp; WIRING REFERENCE
+</a><br><br>
+GARY SINISE FOUNDATION &nbsp;&middot;&nbsp; VICKSBURG HS APPLIED ENGINEERING &amp; ROBOTICS &nbsp;&middot;&nbsp; 2026
+</div>
+
 <script>
 const STATES=["IDLE","HALL CALL","PHASE 1","ARRIVING","LOBBY","PHASE 2 — FF OP","HOLD","RESETTING"];
 const FAULTS=["None","Slow 1Hz","Critical 4Hz","Comms Loss"];
