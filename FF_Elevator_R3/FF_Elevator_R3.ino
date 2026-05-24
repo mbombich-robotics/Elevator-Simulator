@@ -153,7 +153,8 @@ uint32_t      displayBits     = 0;
 bool          ledOn           = false;
 unsigned long lastLedToggle   = 0;
 SimState      stateBeforeHold = STATE_IDLE;
-int           phase2Destination = 0;  // 0 = no destination, 1-3 = traveling to that floor in Phase 2
+int           phase2Destination = 0;
+bool          arrivingFromPhase2 = false;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DISPLAY
@@ -270,8 +271,10 @@ void updateSerialLink() {
 
 void enterState(SimState s) {
   simState = s; stateTimer = millis();
-  // Phase 2 destination is only meaningful inside PHASE2; clear it when leaving.
-  if (s != STATE_PHASE2) phase2Destination = 0;
+  // Preserve phase2 context through ARRIVING so multi-floor travel works.
+  if (s != STATE_PHASE2 && s != STATE_ARRIVING) {
+    phase2Destination = 0; arrivingFromPhase2 = false;
+  }
   if (s == STATE_IDLE) {
     currentFloor = 3; showFloor(3); faultMode = FAULT_NONE;
   }
@@ -329,10 +332,14 @@ void runStateMachine() {
     case STATE_ARRIVING:
       updateFFLED(keyPh1On.state);
       if (elapsed >= ARRIVAL_MS) {
-        if (currentFloor <= 1)
+        if (arrivingFromPhase2) {
+          arrivingFromPhase2 = false;
+          enterState(STATE_PHASE2);
+        } else if (currentFloor <= 1) {
           enterState(keyPh1On.state ? STATE_LOBBY : STATE_RESETTING);
-        else
+        } else {
           enterState(keyPh1On.state ? STATE_PHASE1 : STATE_HALL_CALL);
+        }
       }
       break;
 
@@ -354,20 +361,18 @@ void runStateMachine() {
         phase2Destination = 0; stateTimer = now;
         showFloor(currentFloor); break;
       }
-      // Set destination — the actual floor change is delayed by TRAVEL_MS per
-      // floor, mirroring how Phase 1 / Hall Call travel downward.
-      // Break after setting destination so the travel check below doesn't fire
-      // in the same loop iteration using the stale pre-button-press elapsed value.
+      // Set destination; break so stale elapsed doesn't fire travel in same iteration.
       if (btnFloor1.pressed && currentFloor != 1) { phase2Destination = 1; stateTimer = now; break; }
       if (btnFloor2.pressed && currentFloor != 2) { phase2Destination = 2; stateTimer = now; break; }
       if (btnFloor3.pressed && currentFloor != 3) { phase2Destination = 3; stateTimer = now; break; }
-      // Step toward destination one floor per TRAVEL_MS
+      // Step one floor per TRAVEL_MS, then pause in STATE_ARRIVING for the chime.
       if (phase2Destination != 0 && phase2Destination != currentFloor && elapsed >= TRAVEL_MS) {
         if (currentFloor < phase2Destination) currentFloor++;
         else                                   currentFloor--;
         showFloor(currentFloor);
-        stateTimer = now;
         if (currentFloor == phase2Destination) phase2Destination = 0;
+        arrivingFromPhase2 = true;
+        enterState(STATE_ARRIVING);
       }
       break;
 

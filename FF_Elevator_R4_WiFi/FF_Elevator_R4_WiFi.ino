@@ -164,7 +164,6 @@ void saveCredentials(const String& ssid, const String& pass) {
   ssid.toCharArray(c.ssid, sizeof(c.ssid));
   pass.toCharArray(c.pass, sizeof(c.pass));
   EEPROM.put(CRED_ADDR, c);
-  EEPROM.commit();
   storedSsid = ssid;
 }
 
@@ -194,7 +193,8 @@ void doUpdateCheck(const String& ssid, const String& pass) {
   saveCredentials(ssid, pass);
   pendingUpdateResult = "Connecting to " + ssid + "...";
 
-  WiFi.end(); delay(1000);
+  server.end();              // cleanly stop server before dropping the AP
+  WiFi.end(); delay(2000);
   WiFi.begin(ssid.c_str(), pass.c_str());
   unsigned long t = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) delay(200);
@@ -208,10 +208,10 @@ void doUpdateCheck(const String& ssid, const String& pass) {
       : "Connected but could not read version file.";
   }
 
-  // Restart as AP
-  WiFi.end(); delay(500);
+  // Restart as AP — longer delays to let the ESP32 co-processor reinitialize
+  WiFi.end(); delay(2000);
   WiFi.beginAP(AP_SSID, AP_PASS);
-  delay(3000);
+  delay(6000);
   server.begin();
 }
 
@@ -242,8 +242,8 @@ void computeAudioCue(int newState, int newFloor, int oldState, int oldFloor) {
         if (newFloor > 1) { pendingAudio = "Floor " + String(newFloor) + "."; audioSeq++; }
         break;
       case 4:  pendingAudio = "Lobby. Doors opening."; audioSeq++; break;
-      case 5:  // don't re-announce when resuming from HOLD (state 6)
-        if (oldState != 6) { pendingAudio = "Firefighter operation. Select destination floor."; audioSeq++; }
+      case 5:  // don't re-announce when resuming from HOLD (6) or returning from ARRIVING (3)
+        if (oldState != 6 && oldState != 3) { pendingAudio = "Firefighter operation. Select destination floor."; audioSeq++; }
         break;
       case 6:  pendingAudio = "Hold."; audioSeq++; break;
       default: break;
