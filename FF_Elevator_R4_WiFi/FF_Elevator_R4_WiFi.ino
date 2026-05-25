@@ -252,6 +252,8 @@ String checkRemoteVersion() {
 void doUpdateCheck(const String& ssid, const String& pass) {
   saveCredentials(ssid, pass);
   pendingUpdateResult = "Connecting to " + ssid + "...";
+  pendingRemoteVersion = "";
+  updateAvailable = false;
 
   server.end();
   WiFi.end();
@@ -278,12 +280,12 @@ void doUpdateCheck(const String& ssid, const String& pass) {
     delay(4000);  // let DHCP/DNS settle before opening SSL connection
     showMatrix(MTX_WIFI);  // solid = connected, checking version
     String remoteVer = checkRemoteVersion();
-    if (remoteVer.length() > 0) {
+    if (remoteVer.toFloat() > 0) {
       pendingRemoteVersion = remoteVer;
       updateAvailable = (remoteVer.toFloat() > String(FW_VERSION).toFloat());
       pendingUpdateResult = "Remote version: " + remoteVer;
     } else {
-      pendingUpdateResult = "Connected but could not read version file.";
+      pendingUpdateResult = remoteVer.length() > 0 ? remoteVer : "Could not read version file.";
     }
     showMatrix(MTX_CHECK);
   }
