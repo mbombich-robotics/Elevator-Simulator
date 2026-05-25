@@ -1,7 +1,7 @@
 ﻿/*
  â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
  â•‘   FF ELEVATOR TRAINER â€” Arduino Uno R4 WiFi                            â•‘
- â•‘   WiFi AP + Instructor Web Interface  â€”  v4.03  |  May 2026            â•‘
+ â•‘   WiFi AP + Instructor Web Interface  â€”  v4.04  |  May 2026            â•‘
  â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
  â•‘   ROLE: WiFi access point and web server only.                         â•‘
  â•‘   All I/O and the state machine run on the R3.                         â•‘
@@ -22,7 +22,7 @@
 #include <EEPROM.h>
 #include <OTAUpdate.h>
 
-#define FW_VERSION "4.03"
+#define FW_VERSION "4.04"
 static const char OTA_URL[] =
   "https://raw.githubusercontent.com/mbombich-robotics/Elevator-Simulator/main/firmware/FF_Elevator_R4_WiFi.bin";
 
@@ -339,12 +339,12 @@ void doOTAApply() {
   showMatrix(MTX_WIFI);
 
   OTAUpdate ota;
-  if (ota.begin() != OTAUpdate::OTA_ERROR_NONE) {
+  if (ota.begin("/update.bin") != OTAUpdate::OTA_ERROR_NONE) {
     failAndRestart("OTA failed: init error.");
     return;
   }
 
-  int fileSize = ota.download(OTA_URL);
+  int fileSize = ota.download(OTA_URL, "/update.bin");
   if (fileSize <= 0) {
     failAndRestart("OTA failed: download error " + String(fileSize));
     return;
@@ -358,13 +358,11 @@ void doOTAApply() {
   saveOTAResult("OTA OK: v" + pendingRemoteVersion);
   showMatrix(MTX_CHECK);
 
-  if (ota.update() != OTAUpdate::OTA_ERROR_NONE) {
+  if (ota.update("/update.bin") != OTAUpdate::OTA_ERROR_NONE) {
     clearOTAResult();
     failAndRestart("OTA failed: flash error.");
     return;
   }
-  delay(1000);
-  NVIC_SystemReset();
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
