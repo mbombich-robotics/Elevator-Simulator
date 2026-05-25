@@ -2,6 +2,7 @@
 build/
 *.bin
 !firmware/*.bin
+!firmware/*.ota
 *.elf
 *.hex
 *.map
