@@ -51,12 +51,8 @@ def lzss_compress(data: bytes) -> bytes:
             out.append((bit_buf >> bit_count) & 0xFF)
             bit_buf &= (1 << bit_count) - 1
 
-    pos      = 0
-    n_bytes  = len(data)
-
-    # Build a simple index: first_byte → list of ring positions (updated lazily)
-    # We search the ring buffer directly; to speed up we skip positions whose
-    # first byte doesn't match.
+    pos     = 0
+    n_bytes = len(data)
 
     while pos < n_bytes:
         lookahead_end = min(pos + F, n_bytes)
@@ -67,8 +63,7 @@ def lzss_compress(data: bytes) -> bytes:
         best_pos = 0
 
         if lookahead_len >= THRESHOLD:
-            # Search ring buffer using doubled view to handle wrap-around
-            doubled = bytes(ring) + bytes(ring)   # length 2*N
+            doubled = bytes(ring) + bytes(ring)   # doubled view for wrap-around
             target  = bytes(data[pos:lookahead_end])
 
             search_start = 0
@@ -76,13 +71,35 @@ def lzss_compress(data: bytes) -> bytes:
                 idx = doubled.find(first_byte.to_bytes(1, 'big'), search_start, N + F)
                 if idx == -1 or idx >= N:
                     break
-                # Extend match
-                length = 0
-                while length < len(target) and doubled[idx + length] == target[length]:
-                    length += 1
+
+                # Check whether this candidate overlaps the write region.
+                # Circular distance from idx to r (going forward):
+                dist_to_r = (r - idx) & (N - 1)
+
+                if dist_to_r >= F:
+                    # Fast path: no overlap possible for matches <= F bytes.
+                    # The decoder reads bytes that haven't been written yet.
+                    length = 0
+                    while length < len(target) and doubled[idx + length] == target[length]:
+                        length += 1
+                else:
+                    # Overlap possible: simulate decoder writes with a small
+                    # overlay dict so we see exactly what the decoder would read.
+                    overlay = {}   # {ring_pos: byte} for writes done so far
+                    sim_r   = r
+                    length  = 0
+                    for k in range(len(target)):
+                        ring_pos = (idx + k) & (N - 1)
+                        c = overlay.get(ring_pos, ring[ring_pos])
+                        if c != target[k]:
+                            break
+                        length  += 1
+                        overlay[sim_r] = c
+                        sim_r = (sim_r + 1) & (N - 1)
+
                 if length > best_len:
                     best_len = length
-                    best_pos = idx    # ring-buffer position (0-based, absolute)
+                    best_pos = idx
                     if best_len == F:
                         break
                 search_start = idx + 1
@@ -111,11 +128,7 @@ def lzss_compress(data: bytes) -> bytes:
     return bytes(out)
 
 
-# ── CRC-32 (same table as Arduino utility.cpp) ─────────────────────────────────
-# Python's zlib.crc32 matches: init=0, then XOR result with 0 is standard CRC32.
-# The Arduino code uses init=0xFFFFFFFF and final XOR 0xFFFFFFFF which is the
-# standard ISO-3309 / zlib CRC32.  zlib.crc32() already applies these.
-
+# ── CRC-32 ─────────────────────────────────────────────────────────────────────
 def crc32_arduino(data: bytes) -> int:
     return zlib.crc32(data) & 0xFFFFFFFF
 
@@ -135,7 +148,7 @@ def create_ota(bin_path: str, ota_path: str):
     magic_bytes = struct.pack('<I', MAGIC)
     payload     = magic_bytes + HDR_VER + compressed
 
-    length = len(payload)           # = 4 + 8 + len(compressed)
+    length = len(payload)
     crc32  = crc32_arduino(payload)
 
     header = struct.pack('<II', length, crc32)
