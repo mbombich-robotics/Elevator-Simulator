@@ -46,10 +46,10 @@ body{background:var(--bg);color:var(--text);font-family:Arial,sans-serif;padding
 .offline{background:var(--red);box-shadow:0 0 4px var(--red)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 </style></head><body>
-<div class="hdr"><div class="hdr-icon">&#x1F692;</div><div>
+<div class="hdr"><div class="hdr-icon">&#x1F692;</div><div style="flex:1">
 <div class="hdr-title">FF Elevator Trainer</div>
 <div class="hdr-sub">INSTRUCTOR CONTROL INTERFACE</div>
-</div></div>
+</div><div id="fwVer" style="font-family:monospace;font-size:.75em;color:rgba(255,255,255,.45);letter-spacing:.1em;align-self:center;white-space:nowrap"></div></div>
 <div class="conn-bar">
 <div class="conn-dot online" id="wifiDot"></div><span id="wifiLbl">WIFI CONNECTED</span>
 &nbsp;&middot;&nbsp;
@@ -246,10 +246,8 @@ function pollVersionResult(){
     }
     if(d.checkResult){
       if(d.updateAvail){
-        setUpdateStatus('Update available: v'+d.remoteVer+' &nbsp;(running v'+d.localVer+')','amber');
-        const btn=document.getElementById('applyBtn');
-        btn.textContent='⬆  Apply Update to v'+d.remoteVer;
-        btn.style.display='block';
+        setUpdateStatus('Update available: v'+d.remoteVer+' (running v'+d.localVer+') — downloading…','amber');
+        applyUpdate();
       } else if(d.remoteVer){
         setUpdateStatus('✓ Up to date — v'+d.localVer,'green');
       } else {
@@ -286,6 +284,8 @@ function pollOTAResult(){
 }
 
 fetch('/update-status').then(r=>r.json()).then(d=>{
+  const verEl=document.getElementById('fwVer');
+  if(verEl&&d.localVer)verEl.textContent='v'+d.localVer;
   if(d.otaResult){
     const ok=d.otaResult.indexOf('OK')>=0;
     setUpdateStatus(d.otaResult, ok?'green':'red');
