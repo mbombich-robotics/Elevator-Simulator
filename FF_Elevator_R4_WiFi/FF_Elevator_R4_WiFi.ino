@@ -20,6 +20,11 @@
 #include "WiFiS3.h"
 #include "Arduino_LED_Matrix.h"
 #include <EEPROM.h>
+#include <OTAUpdate.h>
+
+#define FW_VERSION "4.02"
+static const char OTA_URL[] =
+  "https://raw.githubusercontent.com/mbombich-robotics/Elevator-Simulator/main/firmware/FF_Elevator_R4_WiFi.bin";
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // LED MATRIX FRAMES  (8 rows Ã— 12 cols)
@@ -188,6 +193,34 @@ void saveCredentials(const String& ssid, const String& pass) {
   storedSsid = ssid;
 }
 
+// OTA result survives reboot via EEPROM
+#define OTA_RESULT_ADDR  100
+#define OTA_RESULT_MAGIC 0xB6
+#define OTA_RESULT_LEN   48
+
+void saveOTAResult(const String& s) {
+  EEPROM.write(OTA_RESULT_ADDR, OTA_RESULT_MAGIC);
+  int n = min((int)s.length(), OTA_RESULT_LEN - 1);
+  for (int i = 0; i < n; i++) EEPROM.write(OTA_RESULT_ADDR + 1 + i, (uint8_t)s[i]);
+  EEPROM.write(OTA_RESULT_ADDR + 1 + n, 0);
+}
+String loadOTAResult() {
+  if (EEPROM.read(OTA_RESULT_ADDR) != OTA_RESULT_MAGIC) return ;
+  String r = ;
+  for (int i = 0; i < OTA_RESULT_LEN; i++) {
+    char c = (char)EEPROM.read(OTA_RESULT_ADDR + 1 + i);
+    if (!c) break;
+    r += c;
+  }
+  return r;
+}
+void clearOTAResult() { EEPROM.write(OTA_RESULT_ADDR, 0); }
+
+// Version-check state (reset on each check)
+String pendingRemoteVersion = ;
+bool   updateAvailable      = false;
+String otaBootResult        = ;  // loaded from EEPROM once on boot
+
 
 String checkRemoteVersion() {
   WiFiSSLClient client;
@@ -245,10 +278,14 @@ void doUpdateCheck(const String& ssid, const String& pass) {
     delay(4000);  // let DHCP/DNS settle before opening SSL connection
     showMatrix(MTX_WIFI);  // solid = connected, checking version
     String remoteVer = checkRemoteVersion();
-    pendingUpdateResult = remoteVer.length() > 0
-      ? "Remote version: " + remoteVer
-      : "Connected but could not read version file.";
-    showMatrix(MTX_CHECK);  // checkmark = version result ready
+    if (remoteVer.length() > 0) {
+      pendingRemoteVersion = remoteVer;
+      updateAvailable = (remoteVer.toFloat() > String(FW_VERSION).toFloat());
+      pendingUpdateResult = "Remote version: " + remoteVer;
+    } else {
+      pendingUpdateResult = "Connected but could not read version file.";
+    }
+    showMatrix(MTX_CHECK);
   }
 
   // Restart as AP
@@ -258,6 +295,74 @@ void doUpdateCheck(const String& ssid, const String& pass) {
   server.begin();
   // Hold result symbol 3 more seconds so user sees it before reconnecting
   delay(3000);
+}
+
+void doOTAApply() {
+  WiFiCreds c;
+  EEPROM.get(CRED_ADDR, c);
+  if (c.magic != CRED_MAGIC || c.ssid[0] == ' ') {
+    pendingUpdateResult = "No saved WiFi credentials. Run version check first.";
+    return;
+  }
+  String ssid = String(c.ssid);
+  String pass = String(c.pass);
+
+  server.end();
+  WiFi.end();
+  showMatrix(MTX_WIFI);
+  delay(2000);
+
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  unsigned long t = millis();
+  bool wfl = false; unsigned long lfl = 0;
+  while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
+    if (millis() - lfl >= 400) { lfl = millis(); wfl = !wfl; showMatrix(wfl ? MTX_WIFI : MTX_BLANK); }
+    delay(50);
+  }
+
+  auto failAndRestart = [&](const String& msg) {
+    showMatrix(MTX_WARN);
+    pendingUpdateResult = msg;
+    WiFi.end(); delay(2000);
+    WiFi.beginAP(AP_SSID, AP_PASS); delay(6000);
+    server.begin(); delay(3000);
+  };
+
+  if (WiFi.status() != WL_CONNECTED) {
+    failAndRestart("OTA failed: could not connect to " + ssid);
+    return;
+  }
+
+  delay(4000);
+  showMatrix(MTX_WIFI);
+
+  OTAUpdate ota;
+  if (ota.begin() != OTAUpdate::OTA_ERROR_NONE) {
+    failAndRestart("OTA failed: init error.");
+    return;
+  }
+
+  int fileSize = ota.download(OTA_URL);
+  if (fileSize <= 0) {
+    failAndRestart("OTA failed: download error " + String(fileSize));
+    return;
+  }
+
+  if (ota.verify() != OTAUpdate::OTA_ERROR_NONE) {
+    failAndRestart("OTA failed: verify error.");
+    return;
+  }
+
+  saveOTAResult("OTA OK: v" + pendingRemoteVersion);
+  showMatrix(MTX_CHECK);
+
+  if (ota.update() != OTAUpdate::OTA_ERROR_NONE) {
+    clearOTAResult();
+    failAndRestart("OTA failed: flash error.");
+    return;
+  }
+  delay(1000);
+  NVIC_SystemReset();
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -483,12 +588,35 @@ void handleWebServer() {
   }
 
   if (getLine.indexOf("/update-status") >= 0) {
-    String result = pendingUpdateResult.length() > 0
-      ? pendingUpdateResult : "No update check performed yet.";
-    wClient.print("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n");
-    wClient.print(result);
+    String boot = otaBootResult;
+    if (boot.length() > 0) otaBootResult = "";
+    String j = "{\"checkResult\":\"" + pendingUpdateResult +
+               "\",\"localVer\":\""
+               FW_VERSION
+               "\",\"remoteVer\":\"" + pendingRemoteVersion +
+               "\",\"updateAvail\":" + (updateAvailable ? "true" : "false") +
+               ",\"otaResult\":\"" + boot + "\"}"; 
+    wClient.print("HTTP/1.1 200 OK
+Content-Type: application/json
+Connection: close
+
+");
+    wClient.print(j);
     wClient.stop(); return;
   }
+
+  if (getLine.indexOf("/apply-update") >= 0) {
+    wClient.print("HTTP/1.1 200 OK
+Content-Type: text/plain
+Connection: close
+
+");
+    wClient.print("ok");
+    wClient.stop();
+    doOTAApply();
+    return;
+  }
+
 
   wClient.print("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n");
   wClient.print(HTML);
@@ -511,6 +639,8 @@ void setup() {
 
   Serial1.begin(9600);  // R3 link â€” disconnect before programming
   loadCredentials();
+  otaBootResult = loadOTAResult();
+  if (otaBootResult.length() > 0) clearOTAResult();
 
   if (WiFi.status() == WL_NO_MODULE) {
     Serial.println("WiFi module missing!");

@@ -104,15 +104,16 @@ body{background:var(--bg);color:var(--text);font-family:Arial,sans-serif;padding
 
 <div class="section"><div class="section-title">Software Update</div>
 <div class="section-body" style="font-size:.85em">
-<p style="color:var(--dim);font-size:.85em;margin-bottom:10px">Connect to building WiFi to check for updates. The device will reconnect to FF_Trainer automatically.</p>
+<p style="color:var(--dim);font-size:.85em;margin-bottom:10px">Connect to building WiFi to check for and apply firmware updates. The device reconnects to FF_Trainer automatically.</p>
 <div style="display:flex;flex-direction:column;gap:8px">
 <input id="wifiSsid" type="text" placeholder="Network Name (SSID)"
   style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:10px;border-radius:3px;font-size:.9em;font-family:Arial,sans-serif">
 <input id="wifiPass" type="password" placeholder="Password"
   style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:10px;border-radius:3px;font-size:.9em;font-family:Arial,sans-serif">
-<button id="updateBtn" class="btn x" onclick="checkUpdates()" style="padding:12px">&#x1F4F6; &nbsp; Connect &amp; Check for Updates</button>
+<button id="checkBtn" class="btn x" onclick="checkUpdates()" style="padding:12px">&#x1F4F6; &nbsp; Check for Updates</button>
+<button id="applyBtn" class="btn g" onclick="applyUpdate()" style="padding:12px;display:none">&#x2B06; &nbsp; Apply Update</button>
 </div>
-<div id="updateStatus" style="margin-top:10px;font-family:monospace;font-size:.75em;color:var(--amber);min-height:16px"></div>
+<div id="updateStatus" style="margin-top:10px;font-family:monospace;font-size:.75em;min-height:16px"></div>
 </div></div>
 
 <div style="text-align:center;padding:18px 20px 8px;font-family:monospace;font-size:.6em;color:var(--dim);letter-spacing:.12em">
@@ -167,7 +168,7 @@ function setupAutoArm(){
   try{ wasArmed = localStorage.getItem('elevatorAudioArmed')==='1'; }catch(e){}
   if(!wasArmed) return;
   const b=document.getElementById("armBtn");
-  if(b){ b.innerHTML="&#x1F50A; Audio &mdash; tap anywhere to enable"; }
+  if(b){ b.innerHTML="&#x1F50A; Audio — tap anywhere to enable"; }
   const silentArm=()=>{
     if(audioArmed) return;
     ensureAudioCtx();
@@ -216,26 +217,79 @@ function refresh(){
 }
 setInterval(refresh,1000); refresh();
 
+function setUpdateStatus(msg, col){
+  const el=document.getElementById('updateStatus');
+  const colors={amber:'var(--amber)',green:'var(--green)',red:'var(--red)',dim:'var(--dim)'};
+  el.style.color=colors[col]||colors.amber;
+  el.innerHTML=msg;
+}
+
 function checkUpdates(){
   const ssid=document.getElementById('wifiSsid').value.trim();
   const pass=document.getElementById('wifiPass').value;
-  if(!ssid){document.getElementById('updateStatus').textContent='Enter network name.';return;}
-  document.getElementById('updateBtn').disabled=true;
-  document.getElementById('updateStatus').innerHTML='Connecting to <b>'+ssid+'</b>... Device will reconnect to FF_Trainer in ~30 seconds.';
+  if(!ssid){setUpdateStatus('Enter network name.','amber');return;}
+  document.getElementById('checkBtn').disabled=true;
+  document.getElementById('applyBtn').style.display='none';
+  setUpdateStatus('Connecting to <b>'+ssid+'</b>… Reconnects in ~30s.','amber');
   const body='ssid='+encodeURIComponent(ssid)+'&pass='+encodeURIComponent(pass);
-  fetch('/update-check',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body})
-    .then(r=>r.text()).then(t=>{document.getElementById('updateStatus').textContent=t;})
-    .catch(()=>{});
-  setTimeout(pollUpdate,32000);
+  fetch('/update-check',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body}).catch(()=>{});
+  setTimeout(pollVersionResult, 32000);
 }
-function pollUpdate(){
-  fetch('/update-status').then(r=>r.text()).then(t=>{
-    document.getElementById('updateStatus').textContent=t;
-    document.getElementById('updateBtn').disabled=false;
+
+function pollVersionResult(){
+  fetch('/update-status').then(r=>r.json()).then(d=>{
+    document.getElementById('checkBtn').disabled=false;
+    if(d.otaResult){
+      const ok=d.otaResult.indexOf('OK')>=0;
+      setUpdateStatus(d.otaResult, ok?'green':'red');
+      return;
+    }
+    if(d.checkResult){
+      if(d.updateAvail){
+        setUpdateStatus('Update available: v'+d.remoteVer+' &nbsp;(running v'+d.localVer+')','amber');
+        const btn=document.getElementById('applyBtn');
+        btn.textContent='⬆  Apply Update to v'+d.remoteVer;
+        btn.style.display='block';
+      } else if(d.remoteVer){
+        setUpdateStatus('✓ Up to date — v'+d.localVer,'green');
+      } else {
+        setUpdateStatus(d.checkResult,'amber');
+      }
+    }
   }).catch(()=>{
-    document.getElementById('updateStatus').textContent='Still reconnecting — please wait...';
-    setTimeout(pollUpdate,6000);
+    setUpdateStatus('Still reconnecting — please wait…','amber');
+    setTimeout(pollVersionResult, 6000);
   });
 }
+
+function applyUpdate(){
+  document.getElementById('applyBtn').style.display='none';
+  document.getElementById('checkBtn').disabled=true;
+  setUpdateStatus('Downloading firmware… Board will reboot. Reconnect to FF_Trainer when ready (~2 min).','amber');
+  fetch('/apply-update',{method:'POST'}).catch(()=>{});
+  setTimeout(pollOTAResult, 100000);
+}
+
+function pollOTAResult(){
+  fetch('/update-status').then(r=>r.json()).then(d=>{
+    document.getElementById('checkBtn').disabled=false;
+    if(d.otaResult){
+      const ok=d.otaResult.indexOf('OK')>=0;
+      setUpdateStatus(d.otaResult, ok?'green':'red');
+    } else {
+      setUpdateStatus('✓ Board rebooted — run version check to confirm.','green');
+    }
+  }).catch(()=>{
+    setUpdateStatus('Board still rebooting — please wait…','amber');
+    setTimeout(pollOTAResult, 15000);
+  });
+}
+
+fetch('/update-status').then(r=>r.json()).then(d=>{
+  if(d.otaResult){
+    const ok=d.otaResult.indexOf('OK')>=0;
+    setUpdateStatus(d.otaResult, ok?'green':'red');
+  }
+}).catch(()=>{});
 </script></body></html>
 )HTML";
