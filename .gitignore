@@ -1,6 +1,7 @@
 # Arduino build output
 build/
 *.bin
+!firmware/*.bin
 *.elf
 *.hex
 *.map
