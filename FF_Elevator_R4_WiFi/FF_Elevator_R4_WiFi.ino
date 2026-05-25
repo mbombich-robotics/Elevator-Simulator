@@ -205,8 +205,8 @@ void saveOTAResult(const String& s) {
   EEPROM.write(OTA_RESULT_ADDR + 1 + n, 0);
 }
 String loadOTAResult() {
-  if (EEPROM.read(OTA_RESULT_ADDR) != OTA_RESULT_MAGIC) return ;
-  String r = ;
+  if (EEPROM.read(OTA_RESULT_ADDR) != OTA_RESULT_MAGIC) return "";
+  String r = "";
   for (int i = 0; i < OTA_RESULT_LEN; i++) {
     char c = (char)EEPROM.read(OTA_RESULT_ADDR + 1 + i);
     if (!c) break;
@@ -217,9 +217,9 @@ String loadOTAResult() {
 void clearOTAResult() { EEPROM.write(OTA_RESULT_ADDR, 0); }
 
 // Version-check state (reset on each check)
-String pendingRemoteVersion = ;
+String pendingRemoteVersion = "";
 bool   updateAvailable      = false;
-String otaBootResult        = ;  // loaded from EEPROM once on boot
+String otaBootResult        = "";  // loaded from EEPROM once on boot
 
 
 String checkRemoteVersion() {
@@ -596,21 +596,13 @@ void handleWebServer() {
                "\",\"remoteVer\":\"" + pendingRemoteVersion +
                "\",\"updateAvail\":" + (updateAvailable ? "true" : "false") +
                ",\"otaResult\":\"" + boot + "\"}"; 
-    wClient.print("HTTP/1.1 200 OK
-Content-Type: application/json
-Connection: close
-
-");
+    wClient.print("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n");
     wClient.print(j);
     wClient.stop(); return;
   }
 
   if (getLine.indexOf("/apply-update") >= 0) {
-    wClient.print("HTTP/1.1 200 OK
-Content-Type: text/plain
-Connection: close
-
-");
+    wClient.print("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n");
     wClient.print("ok");
     wClient.stop();
     doOTAApply();
