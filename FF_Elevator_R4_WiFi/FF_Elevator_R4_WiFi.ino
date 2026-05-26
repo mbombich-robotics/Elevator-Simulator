@@ -1,7 +1,7 @@
 ﻿/*
  â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
  â•‘   FF ELEVATOR TRAINER â€” Arduino Uno R4 WiFi                            â•‘
- â•‘   WiFi AP + Instructor Web Interface  â€”  v4.07  |  May 2026            â•‘
+ â•‘   WiFi AP + Instructor Web Interface  â€”  v4.08  |  May 2026            â•‘
  â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
  â•‘   ROLE: WiFi access point and web server only.                         â•‘
  â•‘   All I/O and the state machine run on the R3.                         â•‘
@@ -22,9 +22,9 @@
 #include <EEPROM.h>
 #include <OTAUpdate.h>
 
-#define FW_VERSION "4.07"
+#define FW_VERSION "4.08"
 static const char OTA_URL[] =
-  "https://raw.githubusercontent.com/mbombich-robotics/Elevator-Simulator/main/firmware/FF_Elevator_R4_WiFi.ota";
+  "https://raw.githubusercontent.com/mbombich-robotics/Elevator-Simulator/main/firmware/FF_Elevator_R4_WiFi.ota?v=" FW_VERSION;
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // LED MATRIX FRAMES  (8 rows Ã— 12 cols)
@@ -349,13 +349,14 @@ void doOTAApply() {
     failAndRestart("OTA failed: download error " + String(fileSize));
     return;
   }
+  saveOTAResult("OTA: dl=" + String(fileSize) + "B, verifying...");
 
   if (ota.verify() != OTAUpdate::OTA_ERROR_NONE) {
     failAndRestart("OTA failed: verify error.");
     return;
   }
 
-  saveOTAResult("OTA OK: v" + pendingRemoteVersion);
+  saveOTAResult("OTA OK: v" + pendingRemoteVersion + " (" + String(fileSize) + "B)");
   showMatrix(MTX_CHECK);
 
   if (ota.update("/update.bin") != OTAUpdate::OTA_ERROR_NONE) {
