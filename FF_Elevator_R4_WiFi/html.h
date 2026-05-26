@@ -274,6 +274,9 @@ function pollOTAResult(){
     if(d.otaResult){
       const ok=d.otaResult.indexOf('OK')>=0;
       setUpdateStatus(d.otaResult, ok?'green':'red');
+    } else if(d.checkResult&&d.checkResult.indexOf('OTA')>=0){
+      const fail=d.checkResult.indexOf('failed')>=0;
+      setUpdateStatus(d.checkResult, fail?'red':'amber');
     } else {
       setUpdateStatus('✓ Board rebooted — run version check to confirm.','green');
     }
