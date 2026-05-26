@@ -1,7 +1,7 @@
 ﻿/*
  â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
  â•‘   FF ELEVATOR TRAINER â€” Arduino Uno R4 WiFi                            â•‘
- â•‘   WiFi AP + Instructor Web Interface  â€”  v4.09  |  May 2026            â•‘
+ â•‘   WiFi AP + Instructor Web Interface  â€”  v4.10  |  May 2026            â•‘
  â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
  â•‘   ROLE: WiFi access point and web server only.                         â•‘
  â•‘   All I/O and the state machine run on the R3.                         â•‘
@@ -22,7 +22,7 @@
 #include <EEPROM.h>
 #include <OTAUpdate.h>
 
-#define FW_VERSION "4.09"
+#define FW_VERSION "4.10"
 static const char OTA_URL[] =
   "https://raw.githubusercontent.com/mbombich-robotics/Elevator-Simulator/main/firmware/FF_Elevator_R4_WiFi.ota?v=" FW_VERSION;
 
@@ -339,32 +339,46 @@ void doOTAApply() {
   delay(4000);
   showMatrix(MTX_WIFI);
 
+  modem.debug(Serial);
+
   OTAUpdate ota;
-  if (ota.begin("/update.bin") != OTAUpdate::OTA_ERROR_NONE) {
-    failAndRestart("OTA failed: init error.");
+  Serial.println("OTA: calling begin...");
+  int beginErr = (int)ota.begin("/update.bin");
+  Serial.print("OTA: begin="); Serial.println(beginErr);
+  if (beginErr != (int)OTAUpdate::OTA_ERROR_NONE) {
+    failAndRestart("OTA failed: init error " + String(beginErr));
     return;
   }
 
+  Serial.println("OTA: downloading...");
   int fileSize = ota.download(OTA_URL, "/update.bin");
+  Serial.print("OTA: download="); Serial.println(fileSize);
   if (fileSize <= 0) {
     failAndRestart("OTA failed: download error " + String(fileSize));
     return;
   }
   saveOTAResult("OTA: dl=" + String(fileSize) + "B, verifying...");
 
-  if (ota.verify() != OTAUpdate::OTA_ERROR_NONE) {
-    failAndRestart("OTA failed: verify error.");
+  Serial.println("OTA: calling verify...");
+  int verErr = (int)ota.verify();
+  Serial.print("OTA: verify="); Serial.println(verErr);
+  if (verErr != (int)OTAUpdate::OTA_ERROR_NONE) {
+    failAndRestart("OTA failed: verify error " + String(verErr));
     return;
   }
 
   saveOTAResult("OTA OK: v" + pendingRemoteVersion + " (" + String(fileSize) + "B)");
   showMatrix(MTX_CHECK);
 
-  if (ota.update("/update.bin") != OTAUpdate::OTA_ERROR_NONE) {
-    clearOTAResult();
-    failAndRestart("OTA failed: flash error.");
+  Serial.println("OTA: calling update/flash...");
+  int updErr = (int)ota.update("/update.bin");
+  Serial.print("OTA: update="); Serial.println(updErr);
+  if (updErr != (int)OTAUpdate::OTA_ERROR_NONE) {
+    saveOTAResult("OTA failed: flash error " + String(updErr));
+    failAndRestart("OTA failed: flash error " + String(updErr));
     return;
   }
+  Serial.println("OTA: update() OK - ESP32 will reset RA4M1 now");
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
