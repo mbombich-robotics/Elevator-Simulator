@@ -1,7 +1,7 @@
 ﻿/*
  â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
  â•‘   FF ELEVATOR TRAINER â€” Arduino Uno R4 WiFi                            â•‘
- â•‘   WiFi AP + Instructor Web Interface  â€”  v4.11  |  May 2026            â•‘
+ â•‘   WiFi AP + Instructor Web Interface  â€”  v4.13  |  May 2026            â•‘
  â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
  â•‘   ROLE: WiFi access point and web server only.                         â•‘
  â•‘   All I/O and the state machine run on the R3.                         â•‘
@@ -22,7 +22,7 @@
 #include <EEPROM.h>
 #include <OTAUpdate.h>
 
-#define FW_VERSION "4.11"
+#define FW_VERSION "4.13"
 static const char OTA_URL[] =
   "https://raw.githubusercontent.com/mbombich-robotics/Elevator-Simulator/main/firmware/FF_Elevator_R4_WiFi.ota?v=" FW_VERSION;
 
@@ -351,7 +351,9 @@ void doOTAApply() {
   }
 
   Serial.println("OTA: downloading...");
+  modem.timeout(300000);  // 5 min: SSL handshake + 80KB download
   int fileSize = ota.download(OTA_URL, "/update.bin");
+  modem.timeout(10000);
   Serial.print("OTA: download="); Serial.println(fileSize);
   if (fileSize <= 0) {
     failAndRestart("OTA failed: download error " + String(fileSize));
