@@ -1,7 +1,7 @@
 ﻿/*
  â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
  â•‘   FF ELEVATOR TRAINER â€” Arduino Uno R4 WiFi                            â•‘
- â•‘   WiFi AP + Instructor Web Interface  â€”  v4.10  |  May 2026            â•‘
+ â•‘   WiFi AP + Instructor Web Interface  â€”  v4.11  |  May 2026            â•‘
  â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
  â•‘   ROLE: WiFi access point and web server only.                         â•‘
  â•‘   All I/O and the state machine run on the R3.                         â•‘
@@ -22,7 +22,7 @@
 #include <EEPROM.h>
 #include <OTAUpdate.h>
 
-#define FW_VERSION "4.10"
+#define FW_VERSION "4.11"
 static const char OTA_URL[] =
   "https://raw.githubusercontent.com/mbombich-robotics/Elevator-Simulator/main/firmware/FF_Elevator_R4_WiFi.ota?v=" FW_VERSION;
 
