@@ -279,7 +279,7 @@ void enterState(SimState s) {
     phase2Destination = 0; arrivingFromPhase2 = false;
   }
   if (s == STATE_IDLE) {
-    currentFloor = 3; showFloor(3); faultMode = FAULT_NONE;
+    showFloor(currentFloor); faultMode = FAULT_NONE;
   }
 }
 
@@ -348,7 +348,7 @@ void runStateMachine() {
 
     case STATE_LOBBY:
       showFloor(1); updateFFLED(true);
-      if (!keyPh1On.state) { enterState(STATE_RESETTING); break; }
+      if (!keyPh1On.state) { enterState(STATE_IDLE); break; }
       if (keyPh2On.state)  enterState(STATE_PHASE2);
       break;
 
@@ -388,7 +388,7 @@ void runStateMachine() {
       updateFFLED(false); writeDisplay(0UL);
       if (resetTimer == 0) resetTimer = now;
       if (now - resetTimer >= RESET_MS) {
-        resetTimer = 0; enterState(STATE_IDLE);
+        resetTimer = 0; currentFloor = 3; enterState(STATE_IDLE);
       }
       break;
   }

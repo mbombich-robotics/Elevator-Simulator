@@ -68,17 +68,7 @@ body{background:var(--bg);color:var(--text);font-family:Arial,sans-serif;padding
 
 <div class="section"><div class="section-title">Voice Announcements</div>
 <div class="section-body">
-<button class="arm-btn" id="armBtn" onclick="armAudio()">&#x1F507; Tap to Arm Audio</button>
-<div class="btn-grid g2" style="margin-top:10px">
-<button class="btn x" onclick="speak('Going down.')">&#x2B07; Going Down</button>
-<button class="btn x" onclick="speak('Going up.')">&#x2B06; Going Up</button>
-<button class="btn x" onclick="speak('Lobby. Doors opening.')">&#x1F6AA; Lobby</button>
-<button class="btn x" onclick="speak('Firefighter service. Select floor.')">&#x1F692; FF Service</button>
-<button class="btn x" onclick="speak('Floor one.')">Floor 1</button>
-<button class="btn x" onclick="speak('Floor two.')">Floor 2</button>
-<button class="btn x" onclick="speak('Floor three.')">Floor 3</button>
-<button class="btn r" onclick="speechSynthesis.cancel()">&#x23F9; Stop</button>
-</div></div></div>
+<button class="arm-btn" id="armBtn" onclick="armAudio()">&#x1F507; Tap to Arm Audio</button></div></div>
 
 <div class="section"><div class="section-title">Fault Injection</div>
 <div class="section-body"><div class="btn-grid g2">
